@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+data/raw/
+*.tar
+*.mat
+.DS_Store
+node_modules/
