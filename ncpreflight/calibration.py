@@ -7,9 +7,12 @@ multiplicative and stay positive. Intervals come from conformal prediction:
 * split conformal      - scores from a random hold-out. Valid when the new job
                          is exchangeable with the calibration jobs.
 * grouped conformal    - scores from leave-one-group-out predictions (a group
-                         is a part family). Each score is the error on a kind
-                         of part the model had not seen, which is the situation
-                         a new job is in.
+                         is a part family), pooled over all jobs. Each score
+                         is an error on a kind of part the model had not seen.
+                         This is a heuristic for unseen part families: with a
+                         handful of families there is no coverage guarantee,
+                         and one hard family widens everyone's interval. The
+                         experiment measures what coverage it actually gives.
 """
 from __future__ import annotations
 

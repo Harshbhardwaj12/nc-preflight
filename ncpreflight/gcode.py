@@ -23,13 +23,15 @@ INCH = 25.4
 
 # plane -> (first axis, second axis, linear axis) as indices into XYZ
 PLANES = {17: (0, 1, 2), 18: (2, 0, 1), 19: (1, 2, 0)}
-IGNORED_G = {40, 43, 49, 53, 54, 55, 56, 57, 58, 59, 61, 64, 94, 98, 99, 80}
+IGNORED_G = {40, 43, 49, 53, 54, 55, 56, 57, 58, 59, 61, 64, 94, 98, 99}
+# G codes whose axis words are not a move to that position: the block is skipped.
+NON_MOTION_G = {10: "G10 data setting", 28: "G28 reference return", 30: "G30 reference return",
+                52: "G52 local offset", 92: "G92 position preset"}
+CANNED_CYCLES = set(range(81, 90)) | {73, 74, 76}
+KNOWN_WORDS = set("XYZIJKRFSTPQLHD")
+MAX_ABS_VALUE = 1.0e6     # larger numbers are treated as corrupt input
 UNSUPPORTED_G = {41: "cutter radius compensation is not simulated",
                  42: "cutter radius compensation is not simulated",
-                 81: "canned drilling cycle is not expanded",
-                 82: "canned drilling cycle is not expanded",
-                 83: "canned peck-drilling cycle is not expanded",
-                 84: "tapping cycle is not expanded",
                  93: "inverse-time feed is not supported",
                  95: "feed per revolution is not supported"}
 KNOWN_M = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 30}
@@ -127,6 +129,7 @@ def _arc(start, end, plane, cw, offsets, r_word, line, notes):
         if abs(r - r_end) > max(0.01, 0.001 * r):
             notes.append(Note(line, "ARC_RADIUS",
                               f"arc start radius {r:.4f} and end radius {r_end:.4f} differ"))
+            return None
     t1 = math.atan2(sb - cb, sa - ca)
     t2 = math.atan2(eb - cb, ea - ca)
     sweep = t2 - t1
@@ -173,6 +176,7 @@ def parse(text: str) -> Program:
     coolant = False
     tool = 0
     pending_tool = 0
+    cycle_active = False     # a canned cycle is modal until G80 or a motion code
 
     lines = text.splitlines()
     prog.n_lines = len(lines)
@@ -193,6 +197,11 @@ def parse(text: str) -> Program:
             continue
         if words[0][0] == "O":            # program number
             continue
+        if any(not math.isfinite(v) or abs(v) > MAX_ABS_VALUE for _, v in words):
+            prog.notes.append(Note(ln, "BAD_NUMBER", "a number in this block is out of range"))
+            continue
+        for w in sorted({w for w, _ in words} - KNOWN_WORDS - set("GMN")):
+            prog.notes.append(Note(ln, "UNKNOWN", f"address letter {w} is not supported"))
 
         vals: dict[str, float] = {}
         gcodes: list[float] = []
@@ -208,13 +217,21 @@ def parse(text: str) -> Program:
                 vals[w] = v
 
         dwell_block = False
-        home_block = False
+        skip_reason = None
         for g in gcodes:
             gi = int(g)
             if g != gi:
                 prog.notes.append(Note(ln, "UNSUPPORTED", f"G{g:g} is not supported"))
             elif gi in (0, 1, 2, 3):
                 motion = gi
+                cycle_active = False
+            elif gi == 80:
+                cycle_active = False
+            elif gi in CANNED_CYCLES:
+                cycle_active = True
+                prog.notes.append(Note(ln, "UNSUPPORTED", f"G{gi}: canned cycle is not expanded"))
+            elif gi in NON_MOTION_G:
+                skip_reason = NON_MOTION_G[gi]
             elif gi == 4:
                 dwell_block = True
             elif gi in PLANES:
@@ -227,8 +244,6 @@ def parse(text: str) -> Program:
                 absolute, prog.distance_mode_declared = True, True
             elif gi == 91:
                 absolute, prog.distance_mode_declared = False, True
-            elif gi == 28:
-                home_block = True
             elif gi in UNSUPPORTED_G:
                 prog.notes.append(Note(ln, "UNSUPPORTED", f"G{gi}: {UNSUPPORTED_G[gi]}"))
             elif gi not in IGNORED_G:
@@ -263,12 +278,22 @@ def parse(text: str) -> Program:
                 prog.notes.append(Note(ln, "UNKNOWN", f"M{m} is not recognised"))
 
         if dwell_block:
-            secs = vals.get("P", vals.get("X", vals.get("U", 0.0)))
+            if "P" in vals:
+                # P is milliseconds on Fanuc-style controls and seconds on others.
+                secs = vals["P"]
+                if secs >= 100 and secs == int(secs):
+                    secs /= 1000.0
+                prog.notes.append(Note(ln, "DWELL", f"G4 P{vals['P']:g} was read as {secs:g} s; "
+                                                    "the unit of P depends on the controller"))
+            else:
+                secs = vals.get("X", vals.get("U", 0.0))
             prog.segments.append(base("dwell", dwell=max(secs, 0.0)))
             continue
-        if home_block:
-            prog.notes.append(Note(ln, "HOME", "G28 reference return is not simulated"))
+        if skip_reason:
+            prog.notes.append(Note(ln, "SKIPPED", f"{skip_reason} is not simulated"))
             continue
+        if cycle_active:
+            continue                       # positions belong to the canned cycle
 
         has_axis = any(k in vals for k in "XYZ")
         if not has_axis:

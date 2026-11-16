@@ -4,6 +4,12 @@
 
 Setup: 6 part families x 40 programs = 240 jobs per seed, 3 seeds, mean ± standard deviation across seeds. Every result is for a part family the model did not see in training.
 
+## Read this first
+
+- **The simulated machine shares code with the estimator.** Its motion comes from the same planner run with hidden parameters, plus jerk, block-time, exact-stop, spindle-ramp, inertia and engagement effects the estimator does not model. The learned correction therefore has an easier job here than on a real machine, and the error figures are optimistic.
+- **Grouped conformal has no coverage guarantee here.** Scores are pooled from five training families. With so few families the result is an empirical check, and it missed the 90 % target for time. One hard family sets the pooled interval width, so easy families get intervals wider than they need.
+- **± is the spread over data seeds** with the same six families. It understates the uncertainty about a seventh, different family.
+
 ## Model: ridge
 
 ### E1 Point error on an unseen part family (MAPE, %)
@@ -17,10 +23,10 @@ Setup: 6 part families x 40 programs = 240 jobs per seed, 3 seeds, mean ± stand
 
 | Quantity | Method | Target 80 | Target 90 | Mean width at 90 (% of estimate) |
 |---|---|---|---|---|
-| time | Fixed ±10 % margin | n/a | 86.1 ± 10.5 | 20 |
+| time | Fixed ±10 % margin (targets no level) | n/a | 86.1 ± 10.5 | 20 |
 | time | Split conformal | 56.5 ± 7.9 | 66.5 ± 8.4 | 11 ± 5 |
 | time | Grouped conformal | 82.4 ± 3.6 | 86.4 ± 7.3 | 32 ± 19 |
-| energy | Fixed ±10 % margin | n/a | 74.9 ± 5.2 | 20 |
+| energy | Fixed ±10 % margin (targets no level) | n/a | 74.9 ± 5.2 | 20 |
 | energy | Split conformal | 59.6 ± 7.4 | 71.7 ± 6.5 | 21 ± 4 |
 | energy | Grouped conformal | 86.8 ± 6.7 | 91.7 ± 5.8 | 64 ± 5 |
 
@@ -44,14 +50,16 @@ Out-of-range flag (a job is flagged when a feature lies outside the calibration 
 
 Flagged by family (seed 0, %): pocket 2, contour 0, drill 100, surface 100, trochoid 100, engrave 0
 
-### E3 Second machine: coverage at the 90 % target after k calibration runs
+### E3 Second machine: held-out family, coverage at the 90 % target after k runs on that machine
+
+The k runs on the second machine come from the other families.
 
 | Quantity | k = 0 | k = 3 | k = 5 | k = 10 |
 |---|---|---|---|---|
-| time coverage (%) | 75.1 ± 29.6 | 77.8 ± 17.8 | 78.7 ± 19.1 | 79.5 ± 22.2 |
-| time MAPE (%) | 7.2 ± 0.4 | 9.3 ± 1.9 | 8.1 ± 1.0 | 7.5 ± 1.3 |
-| energy coverage (%) | 31.4 ± 42.6 | 91.5 ± 3.6 | 92.1 ± 4.3 | 93.0 ± 4.8 |
-| energy MAPE (%) | 27.4 ± 0.5 | 9.2 ± 1.5 | 8.4 ± 1.2 | 7.8 ± 1.2 |
+| time coverage (%) | 66.7 ± 14.1 | 68.7 ± 6.0 | 70.4 ± 6.5 | 69.3 ± 9.3 |
+| time MAPE (%) | 10.9 ± 3.1 | 13.2 ± 4.3 | 12.3 ± 5.0 | 11.9 ± 4.6 |
+| energy coverage (%) | 42.9 ± 19.6 | 86.1 ± 6.9 | 85.8 ± 4.4 | 87.6 ± 5.5 |
+| energy MAPE (%) | 25.8 ± 0.5 | 13.5 ± 4.2 | 13.8 ± 4.5 | 12.6 ± 3.8 |
 
 ## Model: gbr
 
@@ -66,23 +74,23 @@ Flagged by family (seed 0, %): pocket 2, contour 0, drill 100, surface 100, troc
 
 | Quantity | Method | Target 80 | Target 90 | Mean width at 90 (% of estimate) |
 |---|---|---|---|---|
-| time | Fixed ±10 % margin | n/a | 87.9 ± 10.7 | 20 |
-| time | Split conformal | 61.5 ± 3.9 | 73.9 ± 4.6 | 11 ± 2 |
+| time | Fixed ±10 % margin (targets no level) | n/a | 87.9 ± 10.7 | 20 |
+| time | Split conformal | 57.6 ± 1.7 | 67.2 ± 2.2 | 11 ± 3 |
 | time | Grouped conformal | 78.5 ± 4.4 | 86.2 ± 6.8 | 28 ± 14 |
-| energy | Fixed ±10 % margin | n/a | 76.0 ± 7.7 | 20 |
-| energy | Split conformal | 69.9 ± 5.5 | 82.8 ± 4.4 | 24 ± 2 |
+| energy | Fixed ±10 % margin (targets no level) | n/a | 76.0 ± 7.7 | 20 |
+| energy | Split conformal | 66.8 ± 4.3 | 81.1 ± 6.2 | 25 ± 1 |
 | energy | Grouped conformal | 77.4 ± 3.2 | 86.4 ± 2.3 | 32 ± 9 |
 
 Coverage at the 90 % target by held-out family (seed 0):
 
 | Family | Time: split | Time: grouped | Energy: split | Energy: grouped |
 |---|---|---|---|---|
-| pocket | 100 | 100 | 88 | 95 |
-| contour | 100 | 100 | 95 | 95 |
-| drill | 62 | 65 | 57 | 72 |
-| surface | 65 | 80 | 68 | 78 |
-| trochoid | 75 | 78 | 72 | 82 |
-| engrave | 65 | 95 | 82 | 100 |
+| pocket | 95 | 100 | 95 | 95 |
+| contour | 95 | 100 | 98 | 95 |
+| drill | 40 | 65 | 42 | 72 |
+| surface | 62 | 80 | 78 | 78 |
+| trochoid | 62 | 78 | 70 | 82 |
+| engrave | 65 | 95 | 98 | 100 |
 
 Out-of-range flag (a job is flagged when a feature lies outside the calibration range):
 
@@ -93,12 +101,14 @@ Out-of-range flag (a job is flagged when a feature lies outside the calibration 
 
 Flagged by family (seed 0, %): pocket 2, contour 0, drill 100, surface 100, trochoid 100, engrave 0
 
-### E3 Second machine: coverage at the 90 % target after k calibration runs
+### E3 Second machine: held-out family, coverage at the 90 % target after k runs on that machine
+
+The k runs on the second machine come from the other families.
 
 | Quantity | k = 0 | k = 3 | k = 5 | k = 10 |
 |---|---|---|---|---|
-| time coverage (%) | 77.4 ± 18.4 | 85.4 ± 7.6 | 86.9 ± 8.4 | 82.5 ± 11.5 |
-| time MAPE (%) | 7.2 ± 0.5 | 8.7 ± 2.0 | 7.3 ± 1.4 | 7.0 ± 1.3 |
-| energy coverage (%) | 2.6 ± 1.7 | 88.8 ± 5.7 | 87.9 ± 6.5 | 88.5 ± 6.0 |
-| energy MAPE (%) | 27.4 ± 0.4 | 8.7 ± 1.9 | 8.0 ± 1.7 | 7.6 ± 1.3 |
+| time coverage (%) | 71.8 ± 4.3 | 71.2 ± 0.4 | 71.8 ± 0.5 | 69.5 ± 3.3 |
+| time MAPE (%) | 10.0 ± 2.8 | 13.2 ± 3.7 | 11.9 ± 3.6 | 11.8 ± 3.6 |
+| energy coverage (%) | 14.6 ± 15.5 | 77.8 ± 3.7 | 77.1 ± 4.1 | 77.9 ± 4.4 |
+| energy MAPE (%) | 26.3 ± 1.4 | 12.7 ± 1.9 | 11.6 ± 1.5 | 11.0 ± 1.3 |
 

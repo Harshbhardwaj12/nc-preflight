@@ -121,28 +121,32 @@ def e1_e2(d: dict, kind: str, rng) -> dict:
     return out
 
 
-def e3(d: dict, kind: str, rng, ks=(0, 3, 5, 10), repeats: int = 200) -> dict:
-    """Train on machine A, deploy on machine B with k calibration runs."""
+def e3(d: dict, kind: str, rng, ks=(0, 3, 5, 10), repeats: int = 40) -> dict:
+    """Train on machine A without one family; test that family on machine B.
+
+    The k calibration runs on machine B come from the other families, so the
+    tested family is unseen on both machines.
+    """
     out = {}
     for name, base, ya, yb in (("time", d["planned"], d["t_A"], d["t_B"]),
                                ("energy", d["phys"], d["e_A"], d["e_B"])):
         y_a, y_b = np.log(ya / base), np.log(yb / base)
-        model = make_model(kind).fit(d["X"], y_a)
-        scores = grouped_scores(d["X"], y_a, d["fam"], kind)
-        q = conformal_quantile(scores, 0.9)
-        mu = model.predict(d["X"])
-        res = {}
-        for k in ks:
-            covs, errs = [], []
-            for _ in range(repeats if k else 1):
-                cal = rng.choice(len(y_b), size=k, replace=False) if k else np.array([], int)
-                rest = np.setdiff1d(np.arange(len(y_b)), cal)
-                offset = float(np.mean(y_b[cal] - mu[cal])) if k else 0.0
-                covs.append(np.mean(np.abs(y_b[rest] - mu[rest] - offset) <= q) * 100)
-                errs.append(mape(base[rest] * np.exp(mu[rest] + offset), np.exp(y_b[rest]) * base[rest]))
-            res[str(k)] = {"coverage90": float(np.mean(covs)), "coverage90_sd": float(np.std(covs)),
-                           "mape": float(np.mean(errs))}
-        out[name] = res
+        covs = {k: [] for k in ks}
+        errs = {k: [] for k in ks}
+        for family in FAMILIES:
+            te = d["fam"] == family
+            tr_idx = np.flatnonzero(~te)
+            model = make_model(kind).fit(d["X"][~te], y_a[~te])
+            q = conformal_quantile(grouped_scores(d["X"][~te], y_a[~te], d["fam"][~te], kind), 0.9)
+            mu = model.predict(d["X"])
+            for k in ks:
+                for _ in range(repeats if k else 1):
+                    cal = rng.choice(tr_idx, size=k, replace=False) if k else np.array([], int)
+                    offset = float(np.mean(y_b[cal] - mu[cal])) if k else 0.0
+                    covs[k].append(np.mean(np.abs(y_b[te] - mu[te] - offset) <= q) * 100)
+                    errs[k].append(mape(base[te] * np.exp(mu[te] + offset), yb[te]))
+        out[name] = {str(k): {"coverage90": float(np.mean(covs[k])), "mape": float(np.mean(errs[k]))}
+                     for k in ks}
     return out
 
 
@@ -197,7 +201,18 @@ def main():
          "method behaves. They are not evidence of accuracy on a real machine.", "",
          f"Setup: {len(FAMILIES)} part families x {args.jobs} programs = {n} jobs per seed, "
          f"{args.seeds} seeds, mean ± standard deviation across seeds. "
-         "Every result is for a part family the model did not see in training.", ""]
+         "Every result is for a part family the model did not see in training.", "",
+         "## Read this first", "",
+         "- **The simulated machine shares code with the estimator.** Its motion comes from the same planner "
+         "run with hidden parameters, plus jerk, block-time, exact-stop, spindle-ramp, inertia and engagement "
+         "effects the estimator does not model. The learned correction therefore has an easier job here than "
+         "on a real machine, and the error figures are optimistic.",
+         "- **Grouped conformal has no coverage guarantee here.** Scores are pooled from five training "
+         "families. With so few families the result is an empirical check, and it missed the 90 % target for "
+         "time. One hard family sets the pooled interval width, so easy families get intervals wider than "
+         "they need.",
+         "- **± is the spread over data seeds** with the same six families. It understates the uncertainty "
+         "about a seventh, different family.", ""]
     for kind in ("ridge", "gbr"):
         L += [f"## Model: {kind}", "", "### E1 Point error on an unseen part family (MAPE, %)", "",
               "| Quantity | Nominal (length / feed) | Physics baseline | Calibrated |", "|---|---|---|---|"]
@@ -210,7 +225,7 @@ def main():
               "| Quantity | Method | Target 80 | Target 90 | Mean width at 90 (% of estimate) |",
               "|---|---|---|---|---|"]
         for q in ("time", "energy"):
-            for m, label in (("fixed10", "Fixed ±10 % margin"), ("split", "Split conformal"),
+            for m, label in (("fixed10", "Fixed ±10 % margin (targets no level)"), ("split", "Split conformal"),
                              ("grouped", "Grouped conformal")):
                 c80 = "%.1f ± %.1f" % agg(R, [kind, "loo_family", q, "coverage", m, "0.8"])
                 c90 = "%.1f ± %.1f" % agg(R, [kind, "loo_family", q, "coverage", m, "0.9"])
@@ -236,7 +251,8 @@ def main():
                 + agg(R, [kind, "loo_family", q, "mape_unflagged"])))
         fb = R[0][kind]["loo_family"]["time"]["flagged_by_family"]
         L += ["", "Flagged by family (seed 0, %): " + ", ".join(f"{f} {v:.0f}" for f, v in fb.items())]
-        L += ["", "### E3 Second machine: coverage at the 90 % target after k calibration runs", "",
+        L += ["", "### E3 Second machine: held-out family, coverage at the 90 % target after k runs on that machine", "",
+              "The k runs on the second machine come from the other families.", "",
               "| Quantity | k = 0 | k = 3 | k = 5 | k = 10 |", "|---|---|---|---|---|"]
         for q in ("time", "energy"):
             L.append(f"| {q} coverage (%) | " + " | ".join(

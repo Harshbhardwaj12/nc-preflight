@@ -14,6 +14,7 @@ from .planner import PROFILES, MachineProfile, plan
 
 ARTIFACTS = Path(__file__).resolve().parent.parent / "artifacts"
 MAX_PROGRAM_BYTES = 5_000_000
+MAX_PROGRAM_LINES = 150_000
 MAX_PLOT_POINTS = 6000
 FEATURE_LABELS = {
     "log_nominal": "program duration", "log_planned": "program duration",
@@ -64,6 +65,8 @@ class Estimator:
             raise ValueError(f"unknown material '{material}'")
         if len(text.encode("utf-8", "ignore")) > MAX_PROGRAM_BYTES:
             raise ValueError("program is larger than 5 MB")
+        if text.count("\n") >= MAX_PROGRAM_LINES:
+            raise ValueError(f"program has more than {MAX_PROGRAM_LINES:,} lines")
         m: MachineProfile = PROFILES[machine_id]
         prog = parse(text)
         job = Job.from_meta(prog.meta, material=material, tool_diameter=tool_diameter,
@@ -86,7 +89,8 @@ class Estimator:
             r, lo, hi = cal.energy.predict(x, level)
             energy_out.update(estimate_wh=e_phys * r / 3600, low_wh=e_phys * lo / 3600,
                               high_wh=e_phys * hi / 3600)
-            outside = [FEATURE_LABELS.get(FEATURES[i], FEATURES[i]) for i in cal.envelope.outside(x)]
+            outside = list(dict.fromkeys(FEATURE_LABELS.get(FEATURES[i], FEATURES[i])
+                                         for i in cal.envelope.outside(x)))
             calibration = {"state": "out_of_range" if outside else "calibrated",
                            "source": cal.source, "label": cal.label, "jobs": cal.n_jobs,
                            "groups": cal.n_groups, "level": level, "outside": outside}
@@ -137,13 +141,14 @@ def _hotspots(prog, p, seg_e, n_bins: int = 12) -> list[dict]:
 def _path(prog, p) -> list[dict]:
     """Polyline pieces for drawing, thinned to a bounded number of points."""
     moves = [(i, s) for i, s in enumerate(prog.segments) if s.is_move]
-    stride = max(1, len(moves) // MAX_PLOT_POINTS)
+    stride = max(1, -(-len(moves) // MAX_PLOT_POINTS))   # ceiling division
     out = []
     for k in range(0, len(moves), stride):
         i, s = moves[k]
         end = moves[min(k + stride, len(moves)) - 1][1].end
         pts = polyline(s) if stride == 1 else np.vstack([s.start, end])
         speed = s.length / p.seg_time[i] * 60.0 if p.seg_time[i] > 0 else 0.0
-        out.append({"k": s.kind[0], "line": s.line, "feed": round(float(speed), 1),
+        slow = int(s.is_cut and s.feed > 0 and speed < 0.7 * s.feed)   # well below programmed feed
+        out.append({"k": s.kind[0], "line": s.line, "feed": round(float(speed), 1), "slow": slow,
                     "pts": np.round(pts, 3).tolist()})
     return out

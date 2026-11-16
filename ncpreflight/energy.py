@@ -7,6 +7,7 @@ is an order-of-magnitude baseline that the calibration layer corrects.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -31,17 +32,19 @@ class Job:
     def from_meta(meta: dict, **overrides) -> "Job":
         mat = meta.get("MATERIAL", "aluminium").lower()
         kw = dict(material=mat if mat in SPECIFIC_CUTTING_ENERGY else "aluminium",
-                  tool_diameter=_num(meta.get("TOOL_D"), 10.0),
-                  depth_of_cut=_num(meta.get("AP"), 2.0))
+                  tool_diameter=_num(meta.get("TOOL_D"), 10.0, 0.01, 100.0),
+                  depth_of_cut=_num(meta.get("AP"), 2.0, 0.0, 100.0))
         kw.update({k: v for k, v in overrides.items() if v is not None})
         return Job(**kw)
 
 
-def _num(v, default):
+def _num(v, default, lo, hi):
+    """A number from a program comment, or the default if it is missing or implausible."""
     try:
-        return float(v)
+        x = float(v)
     except (TypeError, ValueError):
         return default
+    return x if math.isfinite(x) and lo <= x <= hi else default
 
 
 def segment_energy(prog: Program, plan: Plan, m: MachineProfile, job: Job) -> np.ndarray:

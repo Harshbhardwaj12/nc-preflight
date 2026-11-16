@@ -113,16 +113,18 @@ def run_checks(prog: Program, m: MachineProfile) -> list[Issue]:
         prev = s
 
     for n in prog.notes:
-        sev = ERROR if n.code in ("ARC_RADIUS", "ARC_R_FULL", "NO_MOTION_MODE") else INFO
-        if n.code == "UNSUPPORTED":
+        sev = ERROR if n.code in ("ARC_RADIUS", "ARC_R_FULL", "NO_MOTION_MODE", "BAD_NUMBER") else INFO
+        if n.code in ("UNSUPPORTED", "SKIPPED"):
             sev = WARNING
         title = {"ARC_RADIUS": "Arc geometry does not close", "ARC_R_FULL": "Undefined arc",
                  "NO_MOTION_MODE": "Axis move without a motion code",
                  "UNSUPPORTED": "Feature not simulated", "UNKNOWN": "Unrecognised code",
-                 "UNPARSED": "Text not interpreted", "HOME": "Reference return not simulated"}[n.code]
+                 "UNPARSED": "Text not interpreted", "SKIPPED": "Block not simulated",
+                 "BAD_NUMBER": "Number out of range", "DWELL": "Dwell unit assumed"}[n.code]
         add(Issue("N-" + n.code, sev, n.line, title, n.message.capitalize() + ".",
+                  "Check the dwell time against your controller's manual." if n.code == "DWELL" else
                   "This block is left out of the time and energy estimate; check it by hand."
-                  if sev != ERROR else "Correct the block."))
+                  if sev != ERROR else "Correct the block. It is left out of the estimate."))
 
     moves = prog.moves
     if moves:
