@@ -59,6 +59,8 @@ Calibration data is a CSV with one row per logged job (`artifacts/calibration_<m
 - `docs/blueprint.md` – requirements, architecture, evaluation plan
 - `docs/research/` – research brief, search log, literature matrix
 - `results/sim_results.md` – experiment results
+- `docs/presentation/NC-Preflight.pptx` – 15-slide explainer deck (built by `scripts/build_deck.js`)
+- `docs/patent-draft.pdf` – the project written as a draft patent specification (not filed; see its §10 before publishing anything)
 
 ## Licence
 
