@@ -5,10 +5,12 @@ const sharp = require("sharp");
 const fs = require("fs");
 const path = require("path");
 const fa = require("react-icons/fa");
-const { applyTheme } = require(process.env.SKILL + "/scripts/apply_theme.js");
+// Optional: a helper that writes THEME colours into the deck theme (set APPLY_THEME to its path).
+const applyTheme = process.env.APPLY_THEME ? require(process.env.APPLY_THEME).applyTheme : async () => {};
 
-const S = __dirname;
-const OUT = process.argv[2];
+// Usage: node scripts/build_deck.js docs/presentation/NC-Preflight.pptx  (needs pptxgenjs, react, react-dom, react-icons, sharp)
+const S = path.join(__dirname, "..", "docs", "presentation", "assets");
+const OUT = process.argv[2] || path.join(__dirname, "..", "docs", "presentation", "NC-Preflight.pptx");
 const speed = JSON.parse(fs.readFileSync(path.join(S, "speed.json")));
 
 // ------------------------------------------------------------------ theme
